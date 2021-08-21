@@ -1,0 +1,821 @@
+<html>
+<head>
+  <link href="https://fonts.googleapis.com/css?family=Press+Start+2P&display=swap" rel="stylesheet">
+  <style>
+    #gamecanvas {
+      border:10px solid black; margin:auto;background: #87ceeb;
+    }
+    /*.canvas-container {*/
+    /*  width:100% !important;*/
+    /*  display: flex; align-content: center; align-items: center*/
+    /*}*/
+
+  </style>
+  <!-- Fabric makes canvas easier -->
+  <script src="js/fabric.min.js"></script>
+</head>
+
+<body style="margin:0; padding:0; width:100%; height:100%; background: black">
+  <canvas id="gamecanvas" width="1200" height="800" >
+
+  </canvas>
+
+<audio id="sndintro" src="sounds/intro.mp3" hidden preload="auto"></audio>
+  <audio id="sndpub" src="sounds/pub.mp3" hidden loop preload="auto"></audio>
+<div style="display:none;">
+</div>
+
+<script>
+
+  function init(){
+    const throttleDrawEvery=2;
+    let frame = 0;
+
+    const canvasWidth = 1400;
+    const canvasHeight = 800;
+
+    const sounds = {
+      intro: document.getElementById("sndintro"),
+      pub: document.getElementById("sndpub"),
+    }
+
+    const dapLocations = ["Antigua", "Barbados", "Jamaica", "Montserrat", "Nebraska", "St.Kitts", "Tortuga"];
+    // Each list is the headTop in place order (note: in circle order, not sprite order)
+    const dapChoices = [
+            [1710,1658,1724,1762,1627,1566,1690],
+            [1651,1702,1667,1562,1707,1592,1682],
+            [1679,1725,1691,1721,1688,1654,1601],
+            [1719,1630,1685,1666,1699,1635,1619],
+            [1694,1709,1613,1673,1567,1639,1680],
+            [1632,1594,1580,1670,1705,1695,1621],
+            [1668,1614,1723,1692,1579,1704,1652],
+            [1703,1563,1717,1656,1685,1711,1689],
+            [1726,1649,1684,1567,1605,1609,1713],
+            [1564,1693,1628,1674,1706,1681,1697],
+            [1615,1577,1643,1662,1506,1712,1696],
+            [1599,1678,1559,1655,1722,1542,1624],
+            [1669,1686,1573,1646,1716,1565,1604],
+            [1660,1597,1708,1671,1584,1720,1653],
+            [1687,1718,1701,1611,1551,1664,1641]
+    ]
+    const dapSpriteOffset = [9, 2, 12, 3, 8,6,13, 10, 7];
+
+    const dapCode = (indexes) => {
+        const upperIdx = indexes[0];
+        const lowerIdx = indexes[1];
+        const locIdx = indexes[2];
+        const locOffset=locIdx*2;
+        const pirateIdx = (dapSpriteOffset[lowerIdx] - dapSpriteOffset[upperIdx] + locOffset + dapChoices.length) % dapChoices.length;
+
+        const locs = dapChoices[pirateIdx];
+        if(!locs) debugger;
+        return locs[locIdx];
+    }
+
+    let canvas = this.__canvas = new fabric.Canvas('gamecanvas', {
+      hoverCursor: 'none',
+      selection: false,
+      //perPixelTargetFind: true,
+      //targetFindTolerance: 5,
+      //renderOnAddRemove: false,
+      selectable:false
+    });
+
+
+
+
+    /***********
+     * Util
+     **********/
+
+    // Retro Mouse
+    let mouse_debounce=0;
+    canvas.on('mouse:move', (options) => {
+      //if(mouse_debounce++ < 20) return;
+      mouse_debounce = 0;
+      const p = canvas.getPointer(options.e);
+      if(images.cursor !=null) {
+        images.cursor.set({ left: p.x-47, top: p.y-47});
+      }
+    });
+
+    // DAP
+    function generateDialAPirate(sprite, idx, top) {
+      const width = 65;
+      const padding = 3;
+
+      return new Promise((res,rej) =>  {
+        sprite.cloneAsImage((img)=> {
+          img.set('cropX',(width)*idx+padding);
+          img.set('width', width-padding-2);
+
+          if(!top)  {
+            img.set('cropY', 35);
+            img.set('height', 22);
+          } else {
+            img.set('height', 31);
+          }
+          img.set("selectable", false);
+
+          img.scale(4);
+          res(img);
+        })
+      });
+    }
+
+    function changeScreen(screenName) {
+      state.context.screen=screenName
+      state.context.entered=false;
+      update();
+    }
+
+    /*********************
+     * Preload Images
+     *********************/
+    const images = {
+      //dap
+      dialAPirate: {images: [], indexes:[] },
+      cursor: null,
+      // intro
+      pirate_logo: null,
+      sparkles: [],
+      intro_screen: null,
+      clouds:null,
+      intro_fg:null,
+      main_title_card:null,
+      // pub
+      pub_bg:null,
+      pirate_leaders: []
+    }
+
+    // list of promises that resolve when finished
+    const imagesPreload = [
+            //DialAPirate
+            new Promise((res, rej)=>{
+              fabric.Image.fromURL("images/drm.png", (img)=>{
+                const max = 9;
+                const idx = [Math.random() * max | 0, Math.random() * max | 0, Math.random() * dapLocations.length | 0];
+                //const idx = [0, max-1];
+                images.dialAPirate.indexes = idx;
+                const faces = [generateDialAPirate(img, idx[0], true), generateDialAPirate(img, idx[1], false)]
+                Promise.all(faces).then((dialAPirate)=>{
+                  images.dialAPirate.images = dialAPirate;
+                  res();
+                })
+              });
+            }),
+            new Promise((res,rej)=>{
+              fabric.Image.fromURL("images/cur.png", (img)=> {
+                  images.cursor = img;
+                  images.cursor.selectable = false;
+                  images.cursor.objectCaching = false;
+                  canvas.add(images.cursor);
+                  res();
+              });
+            }),
+            new Promise((res,rej)=>{
+              fabric.Image.fromURL("images/pirate_logo.png", (img)=> {
+                img.selectable = false;
+                img.scale(0.10);
+                images.pirate_logo = img;
+
+                res();
+              });
+            }),
+          new Promise((res,rej)=>{
+            const scale = 0.25;
+            fabric.Image.fromURL("images/sparkle_0.png", (img)=> {
+              img.selectable = false;
+              img.scale(scale);
+             images.sparkles[0] = img;
+            });
+            fabric.Image.fromURL("images/sparkle_1.png", (img)=> {
+              img.selectable = false;
+              img.scale(scale);
+              images.sparkles[1] = img;
+            });
+            fabric.Image.fromURL("images/sparkle_2.png", (img)=> {
+              img.selectable = false;
+              img.scale(scale);
+              images.sparkles[2] = img;
+            });
+            // don't wait, I'm too lazy and sparkles are just candy
+            res();
+          }),
+      new Promise((res,rej)=>{
+        fabric.Image.fromURL("images/intro_screen.png", (img)=> {
+          img.selectable = false;
+          images.intro_screen = img;
+          res();
+        });
+      }),
+      new Promise((res,rej)=>{
+        fabric.Image.fromURL("images/clouds.png", (img)=> {
+          img.selectable = false;
+          images.clouds = img;
+          res();
+        });
+      }),
+      new Promise((res,rej)=>{
+        fabric.Image.fromURL("images/intro_foreground.png", (img)=> {
+          img.selectable = false;
+          images.intro_fg = img;
+          res();
+        });
+      }),
+      new Promise((res,rej)=>{
+        fabric.Image.fromURL("images/main_title_card.png", (img)=> {
+          img.selectable = false;
+          images.main_title_card = img;
+          res();
+        });
+      }),
+      new Promise((res,rej)=>{
+        fabric.Image.fromURL("images/pub.png", (img)=> {
+          img.selectable = false;
+          images.pub_bg = img;
+          res();
+        });
+      }),
+      new Promise((res,rej)=>{
+        fabric.Image.fromURL("images/pirate_leaders.png", (img)=> {
+          img.selectable = false;
+          const base = { cropY:0, width:65, height:55 };
+          const base2 = { cropY:66, width:65, height:55 };
+          const base3 = { cropY:125, width:65, height:55 };
+          images.pirate_leaders = [
+                  generateSprites(img, { idle:[{ cropX:65, ...base } , { cropX:65+110,...base }, ], "action": [{ cropX:65+110*4, ...base }, { cropX:65+110*5, ...base }, { cropX:65+110*6, ...base },], talking:[ { cropX:65+110*2, ...base }, { cropX:65+110*3, ...base }], pointing:[ { cropX:65+110*7, ...base },{ cropX:65+110*8, ...base }]}),
+                  generateSprites(img, { idle:[{ cropX:25, ...base2 } , { cropX:25+110,...base2},], "action": [ { cropX:25+110*4, ...base2 }, { cropX:25+110*5, ...base2 }, { cropX:25+110*6, ...base2 },], talking:[ { cropX:25+110*2, ...base2 }, { cropX:25+110*3, ...base2 }], pointing:[ { cropX:25+110*7, ...base2 }]}),
+                  generateSprites(img, { idle:[{ cropX:0, ...base3 } , { cropX:0+110,...base3 }, ], "action": [ { cropX:0+110*4, ...base3 }, { cropX:0+110*5, ...base3 },{ cropX:0+110*6, ...base3 },], talking:[ { cropX:0+110*2, ...base3 }, { cropX:0+110*3, ...base3 }], pointing:[ { cropX:0+110*7, ...base3 },{ cropX:0+110*8, ...base3 }]}),
+          ]
+          Promise.all(images.pirate_leaders.map(x=>x.done_loading)).then(res);
+        });
+      }),
+
+    ];
+
+    // Dialogue system
+    function generateDialog(prompts, handleSelection) {
+      if(state.dialog_group != null) {
+        for(let t of state.dialog_group) {
+          canvas.remove(t);
+        }
+      }
+
+      const diaObjs = []
+      let top = canvasHeight-120;
+      let selected = false;
+      for(let p of prompts) {
+            let line =  new fabric.Text(p.prompt, { top:top, left: 50,
+              fill: 'white', strokeWidth: 1, stroke: "white",  textAlign: "left",
+              fontFamily: "\"Press Start 2P\", Monaco, monospace",  fontSize: 28,
+              objectCaching:false,  selectable: false, hasControls: false, hasBorder: false, lockMovementX: true, lockMovementY:true
+            });
+            line.on("mousedown", ()=> {
+              if(!selected)  {
+                line.set({stroke: "teal", strokeWidth:2});
+                handleSelection(p);
+                selected=true;
+              }
+            });
+            canvas.add(line);
+            diaObjs.push(line);
+            top-=40
+
+      }
+      state.dialog_group = diaObjs
+    }
+
+
+    /*********************
+     * Game State
+     *********************/
+    let state = {
+      dialog_group: null,
+      drm : {past_drm: false, typed_text:"", code:"" },
+      context:{ screen: "intro", entered:false },
+      // screen data
+      intro_screen: { skipped: false, lastTimeout: 0 }
+    }
+
+    let dialog = {
+      pub: [
+          {prompt: "I want to be a fireman", reply: [[0, 2500, "Get out of here. you're bothering us"]]},
+        {prompt: "I mean to hack you all!", reply: [[1, 2500, "Get out of here. you're bothering us"]]},
+        {prompt: "I want to be a pirate", reply: [[0, 3500, "You don't become a pirate just by asking"], [1, 2500, "You gotta do cool stuff!"], [2, 3500, "Give the swabby a break\nWhat do you want to know?"]],
+                next:()=>[
+                        {prompt: "Where are the whiskey pirates docked?", reply:[[1, 1500, "[[ Room Info Here]]"], [2, 2500, "Now don't go blabbin about that"], [0,2000, "Or you'll walk the plank"]]},
+                        {prompt: "How do pirates sow discord?", reply:[[1, 1500, "[[ Launch Discord link ]]"], [2, 2500, "Now don't go blabbin about that"], [0,2000, "Or you'll walk the plank"]]},
+                        {prompt: "I want to talk more about MYSELF", reply:[[2, 1500, "You sure like the sound of your voice"],], next: ()=> dialog.pub}
+                ]
+        },
+      ]
+    }
+
+    // game state machine tick
+    function update() {
+    try{
+      canvas.clear(); // just redraw every time
+
+      // arrr you best be picking a pirate me matey. Sure, you could just skip this, but it's way more fun to play eh?
+      if(!state.drm.past_drm) return do_drm();
+
+      switch (state.context.screen) {
+        case "intro":
+          return do_intro();
+
+        case "pub":
+          return do_pub();
+
+
+        default:
+          throw "Unknown screen" + state.context.screen;
+      }
+    } finally {
+      // cleanup every transition. Like bring cursor to front of newly drawn scene
+      canvas.hoverCursor = "none";
+      canvas.add(images.cursor);
+      images.cursor.bringToFront();
+    }
+
+    }
+
+    /*******************
+     * Screen Handlers
+     ******************/
+
+    function do_intro() {
+      if(!state.context.entered) {
+        state.context.entered = true;
+        sounds.intro.play();
+
+          let bgRect = new fabric.Rect({
+            originX: 'left',
+            originY: 'top',
+            width: canvasWidth,
+            height: canvasHeight,
+            fill: 'rgba(0,0,0,1)',
+            selectable: false
+          });
+          canvas.add(bgRect);
+
+          const setSkipableTimeout = (func, delay) => {
+            return setTimeout(()=>{if(!state.intro_screen.skipped) func()}, delay);
+          }
+          
+          // pirate_logo
+          setSkipableTimeout(() => {
+            images.cursor.sendToBack(); // no cursor for this part
+            images.pirate_logo.set("opacity",0);
+            canvas.add(images.pirate_logo);
+            images.pirate_logo.center();
+            images.pirate_logo.animate("opacity", 1, {from: 0, duration: 2500});
+            let title = new fabric.Text('Pirate Games', {
+              top: canvasHeight-200,
+              left: 420,
+              fill: 'white',
+              strokeWidth: 1,
+              stroke: "white",
+              textAlign: "center",
+              fontFamily: "\"Press Start 2P\", Monaco, monospace",
+              fontSize: 30,
+              objectCaching:false,
+              selectable: false,
+              opacity: 0
+            });
+
+            title.animate("opacity", 1, {from: 0, duration: 2500});
+            canvas.add(title);
+
+            // pretty sparkles
+            setSkipableTimeout(()=>{
+              let anim = (orgi_img, options, timeout) => {
+                setSkipableTimeout(()=>{
+                  orgi_img.cloneAsImage((img)=>{
+                    img.set({opacity: 0, ...options});
+                    img.animate("opacity", 1, {from: 0, duration: 700, onComplete:()=>{
+                        img.animate("opacity", 0, {from: 1, duration: 700});
+                      }});
+                    canvas.add(img);
+                  });
+                }, timeout);
+              }
+              anim(images.sparkles[0], {left:450, top:200}, 10);
+              anim(images.sparkles[1], {left:500, top:350}, 450);
+              anim(images.sparkles[2], {left:676, top:400}, 700);
+              anim(images.sparkles[0], {left:720, top:475}, 900);
+              setSkipableTimeout(()=>{
+                images.pirate_logo.animate("opacity", 0, {from: 1, duration: 1000});
+                title.animate("opacity", 0, {from: 1, duration: 1000});
+              }, 4000);
+
+              // main intro_screen
+              setSkipableTimeout(()=> {
+                images.intro_screen.set({left:0, top:0, width:canvasWidth, height:canvasHeight, opacity:0});
+                images.intro_screen.scale(4);
+                canvas.add(images.intro_screen);
+
+                // now clouds
+                images.clouds.set({left:710, top:40,  width:canvasWidth, height:canvasHeight, opacity:0});
+                images.clouds.scale(4);
+                images.clouds.animate("left", "-=1900", {duration: 88000});
+                canvas.add(images.clouds);
+
+                // now fg
+                images.intro_fg.set({left:0, top:0, width:canvasWidth, height:canvasHeight, opacity:0});
+                images.intro_fg.scale(4);
+                canvas.add(images.intro_fg);
+
+                //fade in smoothly
+                images.clouds.animate("opacity",1, {duration:900});
+                images.intro_screen.animate("opacity", 1, {duration:900, onComplete: () => {
+
+                    images.intro_fg.set("opacity",1);
+                  }})
+
+                // intro teaser text
+                setSkipableTimeout(()=>{
+                  const fontStyle ={
+                    top: canvasHeight-200,
+                    //left: 150,
+                    fill: 'white',
+                    strokeWidth: 1,
+                    stroke: "white",
+                    textAlign: "center",
+                    fontFamily: "\"Press Start 2P\", Monaco, monospace",
+                    fontSize: 30,
+                    objectCaching:false,
+                    selectable: false,
+                    opacity: 0
+                  }
+                  let title1 = new fabric.Text('Deep in the desert', { left:300, ...fontStyle} );
+                  canvas.add(title1);
+
+                  title1.animate("opacity", 1, { duration: 2500, onComplete: ()=>{
+                      title1.animate("opacity", 0, {duration: 2000, onComplete: ()=> {
+
+                          let title2 = new fabric.Text('The island of Paradise, NV', { left:175, ...fontStyle});
+                          canvas.add(title2);
+
+                          title2.animate("opacity", 1, {
+                            duration: 2500,
+                            onComplete: () => title2.animate("opacity", 0, {duration: 2000})
+                          });
+                        }})}});
+                }, 1000);
+
+                // now main title card fade in
+                setSkipableTimeout(()=> {
+                  images.main_title_card.set({opacity:0, left:200, top:150});
+                  images.main_title_card.animate("opacity", 1, {duration: 1000});
+
+                  canvas.add(images.main_title_card);
+                }, 11000);
+
+
+                // credits
+                const credits = [["Inspired By", "true"], ["Coded by", "varx"], ["Sprites by", "Ultimecia"], ["Batteries by", "Aask"], ["Badges by", "true"]];
+                let rollCredits = (credits) => {
+                  if(credits.length <= 0) return;
+                  let c = credits.shift();
+                  let style =  {
+                    //left: 420,
+                    fill: 'white',
+                    strokeWidth: 1,
+                    stroke: "white",
+                    textAlign: "center",
+                    fontFamily: "\"Press Start 2P\", Monaco, monospace",
+                    fontSize: 30,
+                    objectCaching:false,
+                    selectable: false,
+                    opacity: 0
+                  }
+                  let line1 = new fabric.Text(c[0], {top: canvasHeight-200, ...style});
+                  let line2 = new fabric.Text(c[1], {top: canvasHeight-150, ...style});
+                  canvas.add(line1);
+                  canvas.add(line2);
+                  line1.centerH();
+                  line2.centerH();
+
+                  for(let line of [line1, line2]) {
+                    line.animate("opacity", 1, {
+                      duration: 1500, onComplete: () => {
+                        setTimeout(() => {
+                          line.animate("opacity", 0);
+                        }, 4000);
+                      }
+                    });
+                  }
+
+                  setSkipableTimeout(() => rollCredits(credits), 6000 + 2500 + 1200);
+                }
+                // actually roll the credits, lol
+                setSkipableTimeout(()=>rollCredits(credits), 16000);
+
+                // transition out
+                setSkipableTimeout(()=> {
+                    changeScreen("pub");
+                }, 85500)
+
+              }, 6000);
+            }, 4000);
+
+          }, 500);
+
+      }
+
+    }
+
+    function do_drm() {
+
+      // draw bg
+      let bgRect = new fabric.Rect({
+        originX: 'left',
+        originY: 'top',
+        width: canvasWidth,
+        height: canvasHeight,
+        fill: 'rgba(0,50,255,1)',
+        selectable: false
+      });
+
+
+
+      const fontStyle =  {
+        fill: '#00aaaa',
+        strokeWidth: 2,
+        stroke: "black",
+        textAlign: "center",
+        fontFamily: "\"Press Start 2P\", Monaco, monospace",
+        fontSize: 30,
+        objectCaching:false,
+        selectable: false
+      };
+      canvas.add(bgRect);
+
+      let title = new fabric.Text('When was this pirate hanged in', {
+        top: 90,
+        left: 150,
+        ...fontStyle
+      });
+
+      canvas.add(title);
+
+      let location = new fabric.Text(dapLocations[images.dialAPirate.indexes[2]]+'?',{
+              top: 150,
+              left: 150,
+              ...fontStyle
+    });
+
+      canvas.add(location);
+      canvas.centerObjectH(location);
+
+      // add pirate
+      const left = canvasWidth/2-65*3
+      images.dialAPirate.images[0].set('top', 275);
+      images.dialAPirate.images[0].set('left', left);
+
+      images.dialAPirate.images[1].set('top', 399);
+      images.dialAPirate.images[1].set('left', left);
+
+      canvas.add(images.dialAPirate.images[0]);
+      canvas.add(images.dialAPirate.images[1]);
+
+      let prompt = new fabric.Text('Type in your answer: '+state.drm.code, {
+        top: 600,
+        left: 150,
+        ...fontStyle
+      });
+
+      canvas.add(prompt);
+
+      console.log("CODE " + dapCode(images.dialAPirate.indexes))
+    }
+
+    function do_pub() {
+      let bgRect = new fabric.Rect({
+        originX: 'left',
+        originY: 'top',
+        width: canvasWidth,
+        height: canvasHeight,
+        fill: 'black',
+        selectable: false
+      });
+      canvas.add(bgRect);
+      sounds.intro.pause();
+
+      setTimeout(()=>{sounds.pub.play(); sounds.pub.volume=0.3}, 500);
+
+
+      images.pub_bg.set({left:0, top:0, width:canvasWidth, height:canvasHeight});
+      images.pub_bg.scale(4);
+      canvas.add(images.pub_bg);
+
+      // Pirate leaders on the table
+      const pirateL = images.pirate_leaders[2].play("idle", 1000);
+      pirateL.set({top:320, left:190})
+      canvas.add(pirateL)
+
+      const pirateC = images.pirate_leaders[1].play("idle", 1000);
+      pirateC.set({top:315, left:320})
+      canvas.add(pirateC)
+
+      const pirateR = images.pirate_leaders[0].play("idle", 1000);
+      pirateR.set({top:290, left:495})
+      canvas.add(pirateR)
+
+      const pirateSpeechCommon =  {
+        strokeWidth: 2,
+        stroke: "white",
+        textAlign: "center",
+        fontFamily: "\"Press Start 2P\", Monaco, monospace",
+        fontSize: 24,
+        objectCaching:false,
+        selectable: false
+      }
+      const pirateSpeechL = {  top: 200, left: 150, fill: '#1111FF', ...pirateSpeechCommon  }
+      const pirateSpeechC = {  top: 200-40, left: 150 + 50, fill: '#11FF11', ...pirateSpeechCommon  }
+      const pirateSpeechR = {  top: 200-80, left: 150 + 100, fill: '#FF1111', ...pirateSpeechCommon  }
+
+      let generatePubDialog = (rootDialog) => {
+
+        generateDialog(rootDialog, (selected) => {
+
+          const replies = [...selected.reply];
+
+          const do_speech = (replyIdx)=> {
+            const reply = replies[replyIdx];
+            let [pirateIdx, replyTime, replyText] = reply;
+
+            let talkingPirate = [images.pirate_leaders[2], images.pirate_leaders[1], images.pirate_leaders[0]][pirateIdx];
+            let talkingPirateSpeechConfig = [pirateSpeechL, pirateSpeechC, pirateSpeechR][pirateIdx];
+            let speech = new fabric.Text(replyText, talkingPirateSpeechConfig);
+            talkingPirate.play("talking", 200);
+            canvas.add(speech);
+
+            setTimeout(() => {
+              talkingPirate.play("idle", 1000);
+              canvas.remove(speech);
+              // if last in list, then move to next (if there is one) or go back to main dialog
+              if (replyIdx+1 >= replies.length) {
+                if (!!selected.next) generatePubDialog(selected.next());
+                else generatePubDialog(rootDialog);
+              } else { // if there's more, then do that
+                do_speech(replyIdx+1);
+              }
+            }, replyTime);
+
+          };
+          //kickoff first speech bubble
+          do_speech(0);
+        });
+      };
+
+      generatePubDialog(dialog.pub);
+
+    }
+
+
+    function draw() {
+      window.requestAnimationFrame(draw);
+      if(frame++ > throttleDrawEvery) {
+        frame=0;
+        canvas.renderAll();
+        if (document.drawCrt)document.drawCrt();
+      }
+    }
+
+    // draw loading while we ... load
+    setTimeout(()=> {
+      let loading = new fabric.Text('Loading...', {
+        top: 350,
+        left: 450,
+      });
+
+      canvas.add(loading);
+      canvas.renderAll();
+      if (document.drawCrt)document.drawCrt();
+      //kickoff tick and draw after preload of images
+      Promise.all(imagesPreload).then(()=>{
+        update();
+        draw();
+      });
+
+    }, 100);
+
+    // event handlers
+    document.onkeyup = (e) => {
+      if(!state.drm.past_drm) {
+        if(e.key === "Backspace" && state.drm.code.length > 0) {
+          state.drm.code = state.drm.code.substring(0, state.drm.code.length - 1);
+        }
+       else if( state.drm.code.length < 4 && !isNaN(parseInt(e.key))) {
+         state.drm.code+=e.key;
+         if(parseInt(state.drm.code) === dapCode(images.dialAPirate.indexes) ) {
+           // timeout to give some room
+           setTimeout(()=>{
+             state.drm.past_drm = true;
+             update();
+           }, 500)
+         }
+
+       }
+       update();
+      } else if(e.key === "Enter" && state.context.screen==="intro") {
+        state.intro_screen.skipped = true;
+        changeScreen("pub");
+      }
+    };
+
+
+    // sprite helper
+    const generateSprites = (img, states)=> {
+
+      const done_loading_promises=[];
+      // {"idle":[], "talk":[]} etc of obj {cropX, cropY, width, height}
+      // go state by state and generate a fabric image for each one
+      let spriteMasterGroup = [];
+      let spriteMasterGroupCounter = 0;
+      const spriteLookup = {};
+      for(const key of Object.keys(states)) {
+        const coords = states[key];
+        const imagePromises = coords.map((coord) => {
+          return new Promise((res,rej)=>{
+            img.clone((img)=>{
+              img.set(coord); // cropX, CropY, width, height and whatever else you wanna stuff in there
+              img.set("opacity", 0);
+              img.set("selectable", false);
+              img.scale(4);
+              res(img)
+              ;});
+          });
+        });
+        done_loading_promises.push(Promise.all(imagePromises).then((images)=>{
+          spriteLookup[key]= spriteMasterGroupCounter++;
+          spriteMasterGroup.push(new fabric.Group(images));
+        }));
+      }
+      Promise.all(done_loading_promises).then(()=>{
+        spriteMasterGroup = new fabric.Group(spriteMasterGroup);
+      });
+
+      // animation interval handle
+      let intervalHandle = 0;
+      return {
+        play: (stateName, tick_ms)=>{
+          // clear any previous animation
+          clearInterval(intervalHandle);
+          // clear all groups
+          for(let i=0; i<spriteMasterGroup.size();i++) {
+            spriteMasterGroup.item(i).set("opacity",0);
+          }
+          const spriteGroup = spriteMasterGroup.item(spriteLookup[stateName]);
+          spriteGroup.set("opacity",1);
+          let spriteIdx = 0;
+          const tick = ()=> {
+            for(let i=0; i<spriteGroup.size(); i++) {
+              spriteGroup.item(i).set("opacity", i === spriteIdx ? 1: 0);
+            }
+            spriteIdx = (spriteIdx + 1) % spriteGroup.size();
+          }
+          intervalHandle = setInterval(tick, tick_ms);
+          tick();
+
+          return spriteMasterGroup;
+        },
+        getGroup: () => {
+          return spriteMasterGroup;
+        },
+        cancel: ()=> {
+          clearInterval(intervalHandle);
+        },
+        done_loading: Promise.all(done_loading_promises)
+      }
+    }
+
+  }
+  init();
+
+console.log(".=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-.\n" +
+        "|                     ______                     |\n" +
+        "|                  .-\"      \"-.                  |\n" +
+        "|                 /            \\                 |\n" +
+        "|     _          |              |          _     |\n" +
+        "|    ( \\         |,  .-.  .-.  ,|         / )    |\n" +
+        "|     > \"=._     | )(__/  \\__)( |     _.=\" <     |\n" +
+        "|    (_/\"=._\"=._ |/     /\\     \\| _.=\"_.=\"\\_)    |\n" +
+        "|           \"=._\"(_     ^^     _)\"_.=\"           |\n" +
+        "|               \"=\\__|IIIIII|__/=\"               |\n" +
+        "|              _.=\"| \\IIIIII/ |\"=._              |\n" +
+        "|    _     _.=\"_.=\"\\          /\"=._\"=._     _    |\n" +
+        "|   ( \\_.=\"_.=\"     `--------`     \"=._\"=._/ )   |\n" +
+        "|    > _.=\"                            \"=._ <    |\n" +
+        "|   (_/                                    \\_)   |\n" +
+        "|                                                |\n" +
+        "'-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-='")
+</script>
+<!-- CRT screen effect -->
+<script src="js/glfx.js"> </script>
+<script src="js/crt.js"> </script>
+
+</body>
+</html>

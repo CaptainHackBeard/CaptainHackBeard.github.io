@@ -287,12 +287,17 @@
     }
 
 
-    /*********************
-     * Game State
-     *********************/
+  /*********************
+   * Game State
+   *********************/
+
     let state = {
       dialog_group: null,
-      drm : {past_drm: false, typed_text:"", code:"" },
+      drm : { 
+        past_drm: false,
+         typed_text:"", 
+         code:""
+         },
       context:{ screen: "intro", entered:false },
       // screen data
       intro_screen: { skipped: false, lastTimeout: 0 }
@@ -311,6 +316,9 @@
         },
       ]
     }
+
+    const urlParams = new URLSearchParams(window.location.search);
+    if(urlParams.has("skipDrm")) setTimeout(function() {state.drm.past_drm=true; update(); }, 500)
 
     // game state machine tick
     function update() {
@@ -588,7 +596,7 @@
 
       canvas.add(prompt);
 
-      console.log("CODE " + dapCode(images.dialAPirate.indexes))
+      console.log("CODE %c" + dapCode(images.dialAPirate.indexes),"color:black; background:black;")
     }
 
     function do_pub() {
@@ -705,10 +713,10 @@
     // event handlers
     document.onkeyup = (e) => {
       if(!state.drm.past_drm) {
-        if(e.key === "Backspace" && state.drm.code.length > 0) {
+        if((e.key === "Backspace" || e.keyCode === 8) && state.drm.code.length > 0) {
           state.drm.code = state.drm.code.substring(0, state.drm.code.length - 1);
         }
-       else if( state.drm.code.length < 4 && !isNaN(parseInt(e.key))) {
+       else if( state.drm.code.length < 4 ) {
          state.drm.code+=e.key;
          if(parseInt(state.drm.code) === dapCode(images.dialAPirate.indexes) ) {
            // timeout to give some room
@@ -725,6 +733,11 @@
         changeScreen("pub");
       }
     };
+
+    document.onkeydown = (e) => {
+      if (e.keyCode == 8) e.stopPropagation(); 
+      return false;
+    }
 
 
     // sprite helper
@@ -812,7 +825,11 @@ console.log(".=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-.\n" +
         "|   (_/                                    \\_)   |\n" +
         "|                                                |\n" +
         "'-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-='")
+
+console.log("Here be a hint for figuring out the answer:")
+console.log("https://www.oldgames.sk/codewheel/secret-of-monkey-island-dial-a-pirate")
 </script>
+
 <!-- CRT screen effect -->
 <script src="js/glfx.js"> </script>
 <script src="js/crt.js"> </script>
